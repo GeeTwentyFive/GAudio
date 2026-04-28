@@ -12,9 +12,9 @@ public:
         class SoundStream {
         public:
                 SoundStream(
-                        Format format,
-                        uint32_t channels,
-                        uint32_t sample_rate
+                        Format format = GAudio::Format::F32,
+                        uint32_t channels = 1,
+                        uint32_t sample_rate = 48000
                 );
                 void SetVolume(float volume);
                 void SetLooping(bool on);
@@ -25,20 +25,14 @@ public:
                 ~SoundStream();
         };
 
-        class Sound : public SoundStream {
-        public:
-                Sound(
-                        void* pcm_frames, uint32_t pcm_frames_count,
-                        Format format,
-                        uint32_t channels,
-                        uint32_t sample_rate
-                );
-                void Play();
-                ~Sound();
-        };
+        void LoadSoundFileData(std::string sound_file_or_dir_path);
 
-        void LoadSoundFileOrFiles(std::string sound_file_or_dir_path);
-        Sound CreateSoundFromLoadedFile(std::string loaded_sound_file_path);
+        class SoundFile : public SoundStream {
+        public:
+                SoundFile(std::string loaded_sound_file_path);
+                void Play();
+                ~SoundFile();
+        };
 
         void Set3DAttenuation(float min_distance, float max_distance);
 
