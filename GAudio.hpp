@@ -4,6 +4,9 @@
 #include <vector>
 
 class GAudio { public: GAudio(); ~GAudio();
+        void SetListenerPosition3D(float x, float y, float z);
+        void SetListenerRotation3D(float yaw); // in radians, forward = -Z
+
         class _Sound { protected: void* sound = 0; _Sound(); public: ~_Sound();
                 void SetVolume(float volume);
                 void SetPosition3D(float x, float y, float z); // Spatialization is disabled by default unless this is called
@@ -28,7 +31,4 @@ class GAudio { public: GAudio(); ~GAudio();
         };
 
         std::vector<float> PopMicrophoneData(); // f32, 1 channel, 48kHz (converted if different)
-
-        void SetListenerPosition3D(float x, float y, float z);
-        void SetListenerRotation3D(float yaw);
 };
