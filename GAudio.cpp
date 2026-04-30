@@ -13,7 +13,7 @@
 
 
 #define DEVICE_IO_SAMPLE_RATE 48000
-#define MIC_BUFFER_SIZE 256
+#define RING_BUFFER_SIZE 256
 
 
 #define ERROR(msg) throw std::runtime_error(std::string("[ERROR] ") + __FILE__ + "@" + std::to_string(__LINE__) + " (" + __func__ + "): " + (msg))
@@ -45,7 +45,7 @@ GAudio::GAudio() { ma_result result; ma_engine_config engine_config = ma_engine_
         if (ma_device_init(NULL, &mic_config, &mic) == MA_SUCCESS) {
                 if (ma_device_start(&mic) != MA_SUCCESS) ma_device_uninit(&mic);
                 else {
-                        result = ma_pcm_rb_init(ma_format_f32, 1, MIC_BUFFER_SIZE, NULL, NULL, &mic_data_ring_buffer); if (result != MA_SUCCESS) ERROR("Failed to initialize ring buffer for mic data");
+                        result = ma_pcm_rb_init(ma_format_f32, 1, RING_BUFFER_SIZE, NULL, NULL, &mic_data_ring_buffer); if (result != MA_SUCCESS) ERROR("Failed to initialize ring buffer for mic data");
                         capturing_mic = true;
                 }
         }
@@ -78,33 +78,61 @@ typedef struct {
         ma_format format;
         ma_uint32 channels;
         ma_uint32 sample_rate;
-        void* pcm_frames;
-        uint32_t pcm_frames_count;
+        ma_pcm_rb pcm_buffer;
 } StreamDataSource;
-// TODO: ^ vtable
-inline StreamDataSource StreamDataSource_init() { ma_result result;
+ma_data_source_vtable stream_source_vtable = {[](ma_data_source* pDataSource, void* pFramesOut, ma_uint64 frameCount, ma_uint64* pFramesRead) -> ma_result { ma_result result;
+        void* buffer_in; ma_uint32 nFramesToRead;
+        result = ma_pcm_rb_acquire_read(&((StreamDataSource*)pDataSource)->pcm_buffer, &nFramesToRead, &buffer_in); if (result != MA_SUCCESS) return result;
+        MA_ZERO_MEMORY(pFramesOut, frameCount * ma_get_bytes_per_frame(((StreamDataSource*)pDataSource)->format, ((StreamDataSource*)pDataSource)->channels));
+        if (nFramesToRead > frameCount) nFramesToRead = frameCount;
+        memcpy(pFramesOut, buffer_in, nFramesToRead * ma_get_bytes_per_frame(((StreamDataSource*)pDataSource)->format, ((StreamDataSource*)pDataSource)->channels));
+        ma_pcm_rb_commit_read(&((StreamDataSource*)pDataSource)->pcm_buffer, nFramesToRead);
+        *pFramesRead = nFramesToRead;
+        return MA_SUCCESS;
+}};
+inline StreamDataSource StreamDataSource_init(
+        ma_format format,
+        ma_uint32 channels,
+        ma_uint32 sample_rate
+) { ma_result result;
         StreamDataSource out;
         ma_data_source_config base_config = ma_data_source_config_init();
-        // TODO: base_config.vtable =
+        base_config.vtable = &stream_source_vtable;
         result = ma_data_source_init(&base_config, &out.base); if (result != MA_SUCCESS) ERROR(std::string("Failed to initialize miniaudio custom data source - ") + std::to_string(result));
+        out.format = format; out.channels = channels; out.sample_rate = sample_rate;
+        result = ma_pcm_rb_init(out.format, out.channels, RING_BUFFER_SIZE, NULL, NULL, &out.pcm_buffer); if (result != MA_SUCCESS) ERROR("Failed to initialize ring buffer for SoundStream data");
         return out;
 }
-inline void StreamDataSource_uninit(StreamDataSource* stream_source) { ma_data_source_uninit(&stream_source->base); }
+inline void StreamDataSource_uninit(StreamDataSource* stream_source) { ma_data_source_uninit(&stream_source->base); ma_pcm_rb_uninit(&stream_source->pcm_buffer); }
 GAudio::SoundStream::SoundStream(
         GAudio::Format format = GAudio::Format::F32,
         uint32_t channels = 1,
         uint32_t sample_rate = 48000
 ) {
-        // TODO: data source -> ma_sound
+        ma_format _format;
+        switch (format) {
+                case GAudio::Format::U8: _format = ma_format_u8;
+                case GAudio::Format::S16: _format = ma_format_s16;
+                case GAudio::Format::S24: _format = ma_format_s24;
+                case GAudio::Format::S32: _format = ma_format_s32;
+                case GAudio::Format::F32: _format = ma_format_f32;
+        }
+        this->stream = malloc(sizeof(StreamDataSource)); StreamDataSource stream_data_source = StreamDataSource_init(_format, channels, sample_rate);
+        memcpy(this->stream, &stream_data_source, sizeof(StreamDataSource));
+        // TODO: ^ -> ma_sound
 }
 void GAudio::SoundStream::SubmitPCM(const void* pcm_frames, uint32_t pcm_frames_count) {
-        // TODO
+        void* buffer_out; ma_uint32 nFramesToWrite;
+        if (ma_pcm_rb_acquire_write(&((StreamDataSource*)this->stream)->pcm_buffer, &nFramesToWrite, &buffer_out) != MA_SUCCESS) return;
+        if (pcm_frames_count < nFramesToWrite) nFramesToWrite = pcm_frames_count;
+        memcpy(buffer_out, pcm_frames, nFramesToWrite * ma_get_bytes_per_frame(((StreamDataSource*)this->stream)->format, ((StreamDataSource*)this->stream)->channels));
+        ma_pcm_rb_commit_write(&((StreamDataSource*)this->stream)->pcm_buffer, nFramesToWrite);
 }
-GAudio::SoundStream::~SoundStream() {} // TODO
+GAudio::SoundStream::~SoundStream() { StreamDataSource_uninit((StreamDataSource*)this->stream); free(this->stream); }
 
 std::vector<float> GAudio::PopMicrophoneData() {
         if (!capturing_mic) return std::vector<float>(0);
-        std::vector<float> mic_data(MIC_BUFFER_SIZE);
+        std::vector<float> mic_data(RING_BUFFER_SIZE);
         void* mic_buffer_in; ma_uint32 nFramesToRead;
         if (ma_pcm_rb_acquire_read(&mic_data_ring_buffer, &nFramesToRead, &mic_buffer_in) != MA_SUCCESS) return std::vector<float>(0);
         memcpy(mic_data.data(), mic_buffer_in, nFramesToRead * ma_get_bytes_per_frame(ma_format_f32, 1));

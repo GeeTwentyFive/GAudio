@@ -20,7 +20,7 @@ class GAudio { public: GAudio(); ~GAudio();
 
         enum class Format : uint8_t { U8, S16, S24, S32, F32 };
 
-        class SoundStream : public _Sound { public: ~SoundStream();
+        class SoundStream : public _Sound { private: void* stream; public: ~SoundStream();
                 SoundStream(
                         Format format = GAudio::Format::F32,
                         uint32_t channels = 1,
