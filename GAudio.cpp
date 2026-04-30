@@ -1,6 +1,8 @@
 #include "GAudio.hpp"
 
 #define MINIAUDIO_IMPLEMENTATION
+#define MA_NO_ENCODING
+#define MA_NO_GENERATION
 #include "libs/miniaudio.h"
 
 #include <stdexcept>
