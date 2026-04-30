@@ -16,33 +16,30 @@
 ma_engine engine;
 
 
-GAudio::GAudio() { ma_result result;
-        result = ma_engine_init(NULL, &engine); if (result != MA_SUCCESS) ERROR(std::string("Failed to initialize miniaudio engine - ") + std::to_string(result));
+GAudio::GAudio() { ma_result result = ma_engine_init(NULL, &engine); if (result != MA_SUCCESS) ERROR(std::string("Failed to initialize miniaudio engine - ") + std::to_string(result)); }
+
+GAudio::SoundStream::SoundStream(
+        Format format = GAudio::Format::F32,
+        uint32_t channels = 1,
+        uint32_t sample_rate = 48000
+) {
+        // TODO
 }
+void GAudio::SoundStream::SetVolume(float volume) {} // TODO
+void GAudio::SoundStream::SetPosition3D(float x, float y, float z) {} // TODO
+void GAudio::SoundStream::SubmitPCM(const void* pcm_frames, uint32_t pcm_frames_count) {} // TODO
+GAudio::SoundStream::~SoundStream() {} // TODO
 
-std::vector<ma_sound> active_sounds;
-void GAudio::Play(
-        const char* audio_file_path,
-        float pos_x = 0.0, float pos_y = 0.0, float pos_z = 0.0
-) { ma_result result;
-        ma_sound sound; result = ma_sound_init_from_file(&engine, audio_file_path, MA_SOUND_FLAG_DECODE, NULL, NULL, &sound); if (result != MA_SUCCESS) ERROR(std::string("Failed to initialize miniaudio sound - ") + std::to_string(result));
-        ma_sound_set_position(&sound, pos_x, pos_y, pos_z);
-        result = ma_sound_start(&sound); if (result != MA_SUCCESS) ERROR(std::string("Failed to play miniaudio sound - ") + std::to_string(result));
-        active_sounds.push_back(sound);
-
-        // Clean up ended sounds
-        for (auto sound_it = active_sounds.begin(); sound_it != active_sounds.end(); ) {
-                if (!ma_sound_at_end(&(*sound_it))) { sound_it++; continue; }
-                ma_sound_uninit(&(*sound_it));
-                delete &(*sound_it);
-                sound_it = active_sounds.erase(sound_it);
-        }
+void LoadSoundFileData(std::string sound_file_or_dir_path) {
+        // TODO
 }
-
-void GAudio::SetListenerPosition(float x, float y, float z) { ma_engine_listener_set_position(&engine, 0, x, y, z); }
-void GAudio::SetListenerRotation(float yaw) { ma_engine_listener_set_direction(&engine, 0, sin(yaw), 0, cos(yaw)); }
-
-GAudio::~GAudio() {
-        for (ma_sound& sound : active_sounds) { ma_sound_uninit(&sound); delete &sound; }
-        ma_engine_uninit(&engine);
+GAudio::SoundFile::SoundFile(std::string loaded_sound_file_path) {
+        // TODO
 }
+void GAudio::SoundFile::Play(bool loop) {} // TODO
+GAudio::SoundFile::~SoundFile() {} // TODO
+
+void GAudio::SetListenerPosition3D(float x, float y, float z) { ma_engine_listener_set_position(&engine, 0, x, y, z); }
+void GAudio::SetListenerRotation3D(float yaw) { ma_engine_listener_set_direction(&engine, 0, sin(yaw), 0, cos(yaw)); }
+
+GAudio::~GAudio() { ma_engine_uninit(&engine); }

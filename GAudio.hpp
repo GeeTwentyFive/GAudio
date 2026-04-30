@@ -26,7 +26,5 @@ class GAudio { public: GAudio(); ~GAudio();
         void SetListenerPosition3D(float x, float y, float z);
         void SetListenerRotation3D(float yaw);
 
-        void Set3DAttenuation(float min_distance, float max_distance);
-
         std::vector<float> PopMicrophoneData(); // f32, 1 channel, 48khz (converted if different)
 };
