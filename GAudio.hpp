@@ -2,6 +2,7 @@
 
 #include <string>
 #include <vector>
+#include <cstdint>
 
 class GAudio { public: GAudio(); ~GAudio();
         void SetListenerPosition3D(float x, float y, float z);
@@ -19,7 +20,7 @@ class GAudio { public: GAudio(); ~GAudio();
                 void Stop();
         };
 
-        enum class Format : uint8_t { U8, S16, S24, S32, F32 };
+        enum class Format { U8, S16, S24, S32, F32 };
 
         class SoundStream : public _Sound { private: void* stream = 0; public: ~SoundStream();
                 SoundStream(

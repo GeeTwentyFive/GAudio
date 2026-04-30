@@ -7,6 +7,7 @@
 
 #include <stdexcept>
 #include <string>
+#include <cstdint>
 #include <cmath>
 #include <vector>
 #include <unordered_map>
@@ -74,7 +75,7 @@ GAudio::SoundFile::SoundFile(std::string loaded_sound_file_path) { ma_result res
         if (loaded_sound_files_data.find(loaded_sound_file_path) == loaded_sound_files_data.end()) ERROR(std::string("Tried to create instance of unloaded sound file ") + loaded_sound_file_path);
         result = ma_sound_init_copy(&engine, &loaded_sound_files_data[loaded_sound_file_path], _MA_SOUND_FLAGS, NULL, (ma_sound*)sound); if (result != MA_SUCCESS) ERROR(std::string("Failed to create instance of loaded sound file ") + loaded_sound_file_path);
 }
-void GAudio::SoundFile::Play(bool loop = false) { ma_sound_seek_to_pcm_frame((ma_sound*)sound, 0); ma_sound_set_looping((ma_sound*)sound, loop); ma_sound_start((ma_sound*)sound); }
+void GAudio::SoundFile::Play(bool loop) { ma_sound_seek_to_pcm_frame((ma_sound*)sound, 0); ma_sound_set_looping((ma_sound*)sound, loop); ma_sound_start((ma_sound*)sound); }
 void GAudio::SoundFile::Stop() { ma_sound_stop((ma_sound*)sound); }
 
 typedef struct {
@@ -94,11 +95,7 @@ ma_data_source_vtable stream_source_vtable = {[](ma_data_source* pDataSource, vo
         *pFramesRead = nFramesToRead;
         return MA_SUCCESS;
 }};
-inline StreamDataSource StreamDataSource_init(
-        ma_format format,
-        ma_uint32 channels,
-        ma_uint32 sample_rate
-) { ma_result result;
+inline StreamDataSource StreamDataSource_init(ma_format format, ma_uint32 channels, ma_uint32 sample_rate) { ma_result result;
         StreamDataSource out;
         ma_data_source_config base_config = ma_data_source_config_init();
         base_config.vtable = &stream_source_vtable;
@@ -108,11 +105,7 @@ inline StreamDataSource StreamDataSource_init(
         return out;
 }
 inline void StreamDataSource_uninit(StreamDataSource* stream_source) { ma_data_source_uninit(&stream_source->base); ma_pcm_rb_uninit(&stream_source->pcm_buffer); }
-GAudio::SoundStream::SoundStream(
-        GAudio::Format format = GAudio::Format::F32,
-        uint32_t channels = 1,
-        uint32_t sample_rate = 48000
-) { ma_result result;
+GAudio::SoundStream::SoundStream(GAudio::Format format, uint32_t channels, uint32_t sample_rate) { ma_result result;
         ma_format _format; switch (format) {
                 case GAudio::Format::U8: _format = ma_format_u8; break;
                 case GAudio::Format::S16: _format = ma_format_s16; break;
