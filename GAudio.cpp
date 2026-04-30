@@ -59,21 +59,21 @@ void GAudio::_Sound::SetVolume(float volume) { ma_sound_set_volume((ma_sound*)th
 void GAudio::_Sound::SetPosition3D(float x, float y, float z) { ma_sound_set_spatialization_enabled((ma_sound*)sound, true); ma_sound_set_position((ma_sound*)this->sound, x, y, z); }
 GAudio::_Sound::~_Sound() { ma_sound_uninit((ma_sound*)sound); delete (ma_sound*)this->sound; }
 
-std::unordered_map<std::string, ma_sound> loaded_sound_files_data;
+std::unordered_map<std::string, ma_sound*> loaded_sound_files_data;
 void _LoadSoundFileData(const std::string sound_file_path) { ma_result result;
         if (loaded_sound_files_data.find(sound_file_path) != loaded_sound_files_data.end()) return;
-        ma_sound _sound; result = ma_sound_init_from_file(&engine, sound_file_path.c_str(), _MA_SOUND_FLAGS, NULL, NULL, &_sound); if (result != MA_SUCCESS) ERROR(std::string("miniaudio failed to load sound data from file ") + sound_file_path + " - " + std::to_string(result));
+        ma_sound* _sound = new ma_sound{}; result = ma_sound_init_from_file(&engine, sound_file_path.c_str(), _MA_SOUND_FLAGS, NULL, NULL, _sound); if (result != MA_SUCCESS) ERROR(std::string("miniaudio failed to load sound data from file ") + sound_file_path + " - " + std::to_string(result));
         loaded_sound_files_data[sound_file_path] = _sound;
 }
 void GAudio::LoadSoundFileData(const std::string sound_file_or_dir_path) {
-        if (!std::filesystem::is_directory(sound_file_or_dir_path)) _LoadSoundFileData(sound_file_or_dir_path);
+        if (!std::filesystem::is_directory(sound_file_or_dir_path)) { _LoadSoundFileData(sound_file_or_dir_path); return; }
         for (auto const& fs_entry : std::filesystem::recursive_directory_iterator(sound_file_or_dir_path)) {
                 if (std::filesystem::is_regular_file(fs_entry)) _LoadSoundFileData(fs_entry.path().generic_string());
         }
 }
 GAudio::SoundFile::SoundFile(std::string loaded_sound_file_path) { ma_result result;
         if (loaded_sound_files_data.find(loaded_sound_file_path) == loaded_sound_files_data.end()) ERROR(std::string("Tried to create instance of unloaded sound file ") + loaded_sound_file_path);
-        result = ma_sound_init_copy(&engine, &loaded_sound_files_data[loaded_sound_file_path], _MA_SOUND_FLAGS, NULL, (ma_sound*)sound); if (result != MA_SUCCESS) ERROR(std::string("Failed to create instance of loaded sound file ") + loaded_sound_file_path);
+        result = ma_sound_init_copy(&engine, loaded_sound_files_data[loaded_sound_file_path], _MA_SOUND_FLAGS, NULL, (ma_sound*)sound); if (result != MA_SUCCESS) ERROR(std::string("Failed to create instance of loaded sound file ") + loaded_sound_file_path);
 }
 void GAudio::SoundFile::Play(bool loop) { ma_sound_seek_to_pcm_frame((ma_sound*)sound, 0); ma_sound_set_looping((ma_sound*)sound, loop); ma_sound_start((ma_sound*)sound); }
 void GAudio::SoundFile::Stop() { ma_sound_stop((ma_sound*)sound); }
@@ -85,16 +85,22 @@ typedef struct {
         ma_uint32 sample_rate;
         ma_pcm_rb pcm_buffer;
 } StreamDataSource;
-ma_data_source_vtable stream_source_vtable = {[](ma_data_source* pDataSource, void* pFramesOut, ma_uint64 frameCount, ma_uint64* pFramesRead) -> ma_result { ma_result result;
-        void* buffer_in; ma_uint32 nFramesToRead;
-        result = ma_pcm_rb_acquire_read(&((StreamDataSource*)pDataSource)->pcm_buffer, &nFramesToRead, &buffer_in); if (result != MA_SUCCESS) return result;
-        MA_ZERO_MEMORY(pFramesOut, frameCount * ma_get_bytes_per_frame(((StreamDataSource*)pDataSource)->format, ((StreamDataSource*)pDataSource)->channels));
-        if (nFramesToRead > frameCount) nFramesToRead = frameCount;
-        memcpy(pFramesOut, buffer_in, nFramesToRead * ma_get_bytes_per_frame(((StreamDataSource*)pDataSource)->format, ((StreamDataSource*)pDataSource)->channels));
-        ma_pcm_rb_commit_read(&((StreamDataSource*)pDataSource)->pcm_buffer, nFramesToRead);
-        *pFramesRead = nFramesToRead;
-        return MA_SUCCESS;
-}};
+ma_data_source_vtable stream_source_vtable = {
+        [](ma_data_source* pDataSource, void* pFramesOut, ma_uint64 frameCount, ma_uint64* pFramesRead) -> ma_result { ma_result result;
+                void* buffer_in; ma_uint32 nFramesToRead;
+                result = ma_pcm_rb_acquire_read(&((StreamDataSource*)pDataSource)->pcm_buffer, &nFramesToRead, &buffer_in); if (result != MA_SUCCESS) return result;
+                MA_ZERO_MEMORY(pFramesOut, frameCount * ma_get_bytes_per_frame(((StreamDataSource*)pDataSource)->format, ((StreamDataSource*)pDataSource)->channels));
+                if (nFramesToRead > frameCount) nFramesToRead = frameCount;
+                memcpy(pFramesOut, buffer_in, nFramesToRead * ma_get_bytes_per_frame(((StreamDataSource*)pDataSource)->format, ((StreamDataSource*)pDataSource)->channels));
+                ma_pcm_rb_commit_read(&((StreamDataSource*)pDataSource)->pcm_buffer, nFramesToRead);
+                *pFramesRead = nFramesToRead;
+                return MA_SUCCESS;
+        },
+        [](ma_data_source* pDataSource, ma_uint64 frameIndex) -> ma_result { return MA_NOT_IMPLEMENTED; },
+        [](ma_data_source* pDataSource, ma_format* pFormat, ma_uint32* pChannels, ma_uint32* pSampleRate, ma_channel* pChannelMap, size_t channelMapCap) -> ma_result { *pFormat = ((StreamDataSource*)pDataSource)->format; *pChannels = ((StreamDataSource*)pDataSource)->channels; *pSampleRate = ((StreamDataSource*)pDataSource)->sample_rate; return MA_SUCCESS; },
+        [](ma_data_source* pDataSource, ma_uint64* pCursor) -> ma_result { *pCursor = 0; return MA_NOT_IMPLEMENTED; },
+        [](ma_data_source* pDataSource, ma_uint64* pLength) -> ma_result { *pLength = 0; return MA_NOT_IMPLEMENTED; }
+};
 inline StreamDataSource StreamDataSource_init(ma_format format, ma_uint32 channels, ma_uint32 sample_rate) { ma_result result;
         StreamDataSource out;
         ma_data_source_config base_config = ma_data_source_config_init();
@@ -114,7 +120,7 @@ GAudio::SoundStream::SoundStream(GAudio::Format format, uint32_t channels, uint3
                 case GAudio::Format::F32: _format = ma_format_f32; break;
         }
         this->stream = new StreamDataSource(StreamDataSource_init(_format, channels, sample_rate));
-        result = ma_sound_init_from_data_source(&engine, this->stream, (MA_SOUND_FLAG_NO_PITCH | MA_SOUND_FLAG_NO_SPATIALIZATION), NULL, (ma_sound*)sound); if (result != MA_SUCCESS) ERROR("Failed to initialize ma_sound from StreamDataSource");
+        result = ma_sound_init_from_data_source(&engine, this->stream, (MA_SOUND_FLAG_NO_PITCH | MA_SOUND_FLAG_NO_SPATIALIZATION), NULL, (ma_sound*)sound); if (result != MA_SUCCESS) ERROR(std::string("Failed to initialize ma_sound from StreamDataSource - ") + std::to_string(result));
         ma_sound_start((ma_sound*)sound);
 }
 void GAudio::SoundStream::SubmitPCM(const void* pcm_frames, uint32_t pcm_frames_count) {
@@ -137,4 +143,4 @@ std::vector<float> GAudio::PopMicrophoneData() {
         return mic_data;
 }
 
-GAudio::~GAudio() { for (auto& [_, sound] : loaded_sound_files_data) ma_sound_uninit(&sound); ma_engine_uninit(&engine); }
+GAudio::~GAudio() { for (auto& [_, sound] : loaded_sound_files_data) { ma_sound_uninit(sound); delete sound; } ma_engine_uninit(&engine); }

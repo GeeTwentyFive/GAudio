@@ -1,0 +1,1 @@
+c++ -O2 -march=x86-64-v2 main.cpp ../build/libgaudio.a -o EXAMPLE.exe
