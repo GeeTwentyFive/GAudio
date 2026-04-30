@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <filesystem>
 
 
 #define DEVICE_IO_SAMPLE_RATE 48000
@@ -47,8 +48,15 @@ void GAudio::_Sound::SetPosition3D(float x, float y, float z) { ma_sound_set_spa
 GAudio::_Sound::~_Sound() { ma_sound_uninit(sound); }
 
 std::unordered_map<std::string, ma_sound> loaded_sound_files_data;
-void LoadSoundFileData(std::string sound_file_or_dir_path) {
-        // TODO: Recurse if dir -> for each file: ma_sound_init_from_file() + _MA_SOUND_FLAGS
+void _LoadSoundFileData(const std::string sound_file_path) { ma_result result;
+        ma_sound _sound; result = ma_sound_init_from_file(&engine, sound_file_path.c_str(), _MA_SOUND_FLAGS, NULL, NULL, &_sound); if (result != MA_SUCCESS) ERROR(std::string("miniaudio failed to load sound data from file ") + sound_file_path + " - " + std::to_string(result));
+        loaded_sound_files_data[sound_file_path] = _sound;
+}
+void LoadSoundFileData(const std::string sound_file_or_dir_path) {
+        if (!std::filesystem::is_directory(sound_file_or_dir_path)) _LoadSoundFileData(sound_file_or_dir_path);
+        for (auto const& fs_entry : std::filesystem::recursive_directory_iterator(sound_file_or_dir_path)) {
+                if (std::filesystem::is_regular_file(fs_entry)) _LoadSoundFileData(fs_entry.path().generic_string());
+        }
 }
 GAudio::SoundFile::SoundFile(std::string loaded_sound_file_path) { ma_result result;
         if (loaded_sound_files_data.find(loaded_sound_file_path) == loaded_sound_files_data.end()) ERROR(std::string("Tried to create instance of unloaded sound file ") + loaded_sound_file_path);
