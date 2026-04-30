@@ -7,7 +7,7 @@
 
 #include <stdexcept>
 #include <string>
-#include <math.h>
+#include <cmath>
 #include <vector>
 #include <unordered_map>
 #include <filesystem>
@@ -51,7 +51,7 @@ GAudio::GAudio() { ma_result result; ma_engine_config engine_config = ma_engine_
 }
 
 void GAudio::SetListenerPosition3D(float x, float y, float z) { ma_engine_listener_set_position(&engine, 0, x, y, z); }
-void GAudio::SetListenerRotation3D(float yaw) { ma_engine_listener_set_direction(&engine, 0, sin(yaw), 0, -cos(yaw)); }
+void GAudio::SetListenerRotation3D(float yaw) { ma_engine_listener_set_direction(&engine, 0, std::sin(yaw), 0, -std::cos(yaw)); }
 
 GAudio::_Sound::_Sound() { this->sound = new ma_sound{}; }
 void GAudio::_Sound::SetVolume(float volume) { ma_sound_set_volume((ma_sound*)this->sound, volume); }
@@ -60,6 +60,7 @@ GAudio::_Sound::~_Sound() { ma_sound_uninit((ma_sound*)sound); delete (ma_sound*
 
 std::unordered_map<std::string, ma_sound> loaded_sound_files_data;
 void _LoadSoundFileData(const std::string sound_file_path) { ma_result result;
+        if (loaded_sound_files_data.find(sound_file_path) != loaded_sound_files_data.end()) return;
         ma_sound _sound; result = ma_sound_init_from_file(&engine, sound_file_path.c_str(), _MA_SOUND_FLAGS, NULL, NULL, &_sound); if (result != MA_SUCCESS) ERROR(std::string("miniaudio failed to load sound data from file ") + sound_file_path + " - " + std::to_string(result));
         loaded_sound_files_data[sound_file_path] = _sound;
 }
