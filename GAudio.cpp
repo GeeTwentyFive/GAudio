@@ -51,9 +51,10 @@ GAudio::GAudio() { ma_result result; ma_engine_config engine_config = ma_engine_
         }
 }
 
-void GAudio::_Sound::SetVolume(float volume) { ma_sound_set_volume(this->sound, volume); }
-void GAudio::_Sound::SetPosition3D(float x, float y, float z) { ma_sound_set_spatialization_enabled(sound, true); ma_sound_set_position(this->sound, x, y, z); }
-GAudio::_Sound::~_Sound() { ma_sound_uninit(sound); }
+GAudio::_Sound::_Sound() { this->sound = malloc(sizeof(ma_sound)); }
+void GAudio::_Sound::SetVolume(float volume) { ma_sound_set_volume((ma_sound*)this->sound, volume); }
+void GAudio::_Sound::SetPosition3D(float x, float y, float z) { ma_sound_set_spatialization_enabled((ma_sound*)sound, true); ma_sound_set_position((ma_sound*)this->sound, x, y, z); }
+GAudio::_Sound::~_Sound() { ma_sound_uninit((ma_sound*)sound); free(this->sound); }
 
 std::unordered_map<std::string, ma_sound> loaded_sound_files_data;
 void _LoadSoundFileData(const std::string sound_file_path) { ma_result result;
@@ -68,10 +69,10 @@ void LoadSoundFileData(const std::string sound_file_or_dir_path) {
 }
 GAudio::SoundFile::SoundFile(std::string loaded_sound_file_path) { ma_result result;
         if (loaded_sound_files_data.find(loaded_sound_file_path) == loaded_sound_files_data.end()) ERROR(std::string("Tried to create instance of unloaded sound file ") + loaded_sound_file_path);
-        result = ma_sound_init_copy(&engine, &loaded_sound_files_data[loaded_sound_file_path], _MA_SOUND_FLAGS, NULL, sound); if (result != MA_SUCCESS) ERROR(std::string("Failed to create instance of loaded sound file ") + loaded_sound_file_path);
+        result = ma_sound_init_copy(&engine, &loaded_sound_files_data[loaded_sound_file_path], _MA_SOUND_FLAGS, NULL, (ma_sound*)sound); if (result != MA_SUCCESS) ERROR(std::string("Failed to create instance of loaded sound file ") + loaded_sound_file_path);
 }
-void GAudio::SoundFile::Play(bool loop) { ma_sound_seek_to_pcm_frame(sound, 0); ma_sound_set_looping(sound, loop); ma_sound_start(sound); }
-void GAudio::SoundFile::Stop() { ma_sound_stop(sound); }
+void GAudio::SoundFile::Play(bool loop = false) { ma_sound_seek_to_pcm_frame((ma_sound*)sound, 0); ma_sound_set_looping((ma_sound*)sound, loop); ma_sound_start((ma_sound*)sound); }
+void GAudio::SoundFile::Stop() { ma_sound_stop((ma_sound*)sound); }
 
 typedef struct {
         ma_data_source_base base;
@@ -119,7 +120,8 @@ GAudio::SoundStream::SoundStream(
         }
         this->stream = malloc(sizeof(StreamDataSource)); StreamDataSource stream_data_source = StreamDataSource_init(_format, channels, sample_rate);
         memcpy(this->stream, &stream_data_source, sizeof(StreamDataSource));
-        // TODO: ^ -> ma_sound
+        ma_sound_init_from_data_source(&engine, this->stream, (MA_SOUND_FLAG_NO_PITCH | MA_SOUND_FLAG_NO_SPATIALIZATION), NULL, (ma_sound*)sound);
+        ma_sound_start((ma_sound*)sound);
 }
 void GAudio::SoundStream::SubmitPCM(const void* pcm_frames, uint32_t pcm_frames_count) {
         void* buffer_out; ma_uint32 nFramesToWrite;
@@ -127,6 +129,7 @@ void GAudio::SoundStream::SubmitPCM(const void* pcm_frames, uint32_t pcm_frames_
         if (pcm_frames_count < nFramesToWrite) nFramesToWrite = pcm_frames_count;
         memcpy(buffer_out, pcm_frames, nFramesToWrite * ma_get_bytes_per_frame(((StreamDataSource*)this->stream)->format, ((StreamDataSource*)this->stream)->channels));
         ma_pcm_rb_commit_write(&((StreamDataSource*)this->stream)->pcm_buffer, nFramesToWrite);
+        if (!ma_sound_is_playing((ma_sound*)sound)) ma_sound_start((ma_sound*)sound);
 }
 GAudio::SoundStream::~SoundStream() { StreamDataSource_uninit((StreamDataSource*)this->stream); free(this->stream); }
 
