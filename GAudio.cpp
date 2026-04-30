@@ -23,6 +23,7 @@
 
 ma_engine engine;
 ma_device mic;
+ma_pcm_rb mic_data_ring_buffer;
 bool capturing_mic = false;
 
 
@@ -35,11 +36,18 @@ GAudio::GAudio() { ma_result result; ma_engine_config engine_config = ma_engine_
         mic_config.capture.channels = 1;
         mic_config.sampleRate = DEVICE_IO_SAMPLE_RATE;
         mic_config.dataCallback = [](ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount) {
-                // TODO: Write to ring buffer
+                void* mic_buffer_out; ma_uint32 nFramesToWrite;
+                if (ma_pcm_rb_acquire_write(&mic_data_ring_buffer, &nFramesToWrite, &mic_buffer_out) != MA_SUCCESS) return;
+                if (frameCount < nFramesToWrite) nFramesToWrite = frameCount;
+                memcpy(mic_buffer_out, pInput, nFramesToWrite * ma_get_bytes_per_frame(pDevice->capture.format, pDevice->capture.channels));
+                ma_pcm_rb_commit_write(&mic_data_ring_buffer, nFramesToWrite);
         };
         if (ma_device_init(NULL, &mic_config, &mic) == MA_SUCCESS) {
                 if (ma_device_start(&mic) != MA_SUCCESS) ma_device_uninit(&mic);
-                else capturing_mic = true;
+                else {
+                        result = ma_pcm_rb_init(ma_format_f32, 1, MIC_BUFFER_SIZE, NULL, NULL, &mic_data_ring_buffer); if (result != MA_SUCCESS) ERROR("Failed to initialize ring buffer for mic data");
+                        capturing_mic = true;
+                }
         }
 }
 
@@ -89,13 +97,18 @@ GAudio::SoundStream::SoundStream(
 ) {
         // TODO: data source -> ma_sound
 }
-void GAudio::SoundStream::SubmitPCM(const void* pcm_frames, uint32_t pcm_frames_count) {} // TODO
+void GAudio::SoundStream::SubmitPCM(const void* pcm_frames, uint32_t pcm_frames_count) {
+        // TODO
+}
 GAudio::SoundStream::~SoundStream() {} // TODO
 
 std::vector<float> GAudio::PopMicrophoneData() {
         if (!capturing_mic) return std::vector<float>(0);
-        std::vector<float> mic_data; mic_data.reserve(MIC_BUFFER_SIZE);
-        // TODO: Pop from mic ring buffer
+        std::vector<float> mic_data(MIC_BUFFER_SIZE);
+        void* mic_buffer_in; ma_uint32 nFramesToRead;
+        if (ma_pcm_rb_acquire_read(&mic_data_ring_buffer, &nFramesToRead, &mic_buffer_in) != MA_SUCCESS) return std::vector<float>(0);
+        memcpy(mic_data.data(), mic_buffer_in, nFramesToRead * ma_get_bytes_per_frame(ma_format_f32, 1));
+        ma_pcm_rb_commit_read(&mic_data_ring_buffer, nFramesToRead);
 }
 
 void GAudio::SetListenerPosition3D(float x, float y, float z) { ma_engine_listener_set_position(&engine, 0, x, y, z); }
