@@ -15,7 +15,7 @@
 
 
 #define DEVICE_IO_SAMPLE_RATE 48000
-#define RING_BUFFER_SIZE 256
+#define RING_BUFFER_SIZE 1024
 
 
 #define ERROR(msg) throw std::runtime_error(std::string("[ERROR] ") + __FILE__ + "@" + std::to_string(__LINE__) + " (" + __func__ + "): " + (msg))
@@ -87,13 +87,12 @@ typedef struct {
 } StreamDataSource;
 ma_data_source_vtable stream_source_vtable = {
         [](ma_data_source* pDataSource, void* pFramesOut, ma_uint64 frameCount, ma_uint64* pFramesRead) -> ma_result { ma_result result;
-                void* buffer_in; ma_uint32 nFramesToRead = frameCount;
+                void* buffer_in; ma_uint32 nFramesToRead = frameCount; *pFramesRead = frameCount;
                 result = ma_pcm_rb_acquire_read(&((StreamDataSource*)pDataSource)->pcm_buffer, &nFramesToRead, &buffer_in); if (result != MA_SUCCESS) return result;
                 MA_ZERO_MEMORY(pFramesOut, frameCount * ma_get_bytes_per_frame(((StreamDataSource*)pDataSource)->format, ((StreamDataSource*)pDataSource)->channels));
                 if (nFramesToRead > frameCount) nFramesToRead = frameCount;
                 memcpy(pFramesOut, buffer_in, nFramesToRead * ma_get_bytes_per_frame(((StreamDataSource*)pDataSource)->format, ((StreamDataSource*)pDataSource)->channels));
                 ma_pcm_rb_commit_read(&((StreamDataSource*)pDataSource)->pcm_buffer, nFramesToRead);
-                *pFramesRead = nFramesToRead;
                 return MA_SUCCESS;
         },
         [](ma_data_source* pDataSource, ma_uint64 frameIndex) -> ma_result { return MA_NOT_IMPLEMENTED; },
