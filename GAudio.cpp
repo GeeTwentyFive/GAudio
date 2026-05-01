@@ -38,7 +38,7 @@ GAudio::GAudio() { ma_result result; ma_engine_config engine_config = ma_engine_
         mic_config.capture.channels = 1;
         mic_config.sampleRate = DEVICE_IO_SAMPLE_RATE;
         mic_config.dataCallback = [](ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount) {
-                void* mic_buffer_out; ma_uint32 nFramesToWrite;
+                void* mic_buffer_out; ma_uint32 nFramesToWrite = frameCount;
                 if (ma_pcm_rb_acquire_write(&mic_data_ring_buffer, &nFramesToWrite, &mic_buffer_out) != MA_SUCCESS) return;
                 if (frameCount < nFramesToWrite) nFramesToWrite = frameCount;
                 memcpy(mic_buffer_out, pInput, nFramesToWrite * ma_get_bytes_per_frame(pDevice->capture.format, pDevice->capture.channels));
@@ -87,7 +87,7 @@ typedef struct {
 } StreamDataSource;
 ma_data_source_vtable stream_source_vtable = {
         [](ma_data_source* pDataSource, void* pFramesOut, ma_uint64 frameCount, ma_uint64* pFramesRead) -> ma_result { ma_result result;
-                void* buffer_in; ma_uint32 nFramesToRead;
+                void* buffer_in; ma_uint32 nFramesToRead = frameCount;
                 result = ma_pcm_rb_acquire_read(&((StreamDataSource*)pDataSource)->pcm_buffer, &nFramesToRead, &buffer_in); if (result != MA_SUCCESS) return result;
                 MA_ZERO_MEMORY(pFramesOut, frameCount * ma_get_bytes_per_frame(((StreamDataSource*)pDataSource)->format, ((StreamDataSource*)pDataSource)->channels));
                 if (nFramesToRead > frameCount) nFramesToRead = frameCount;
@@ -124,7 +124,7 @@ GAudio::SoundStream::SoundStream(GAudio::Format format, uint32_t channels, uint3
         ma_sound_start((ma_sound*)sound);
 }
 void GAudio::SoundStream::SubmitPCM(const void* pcm_frames, uint32_t pcm_frames_count) {
-        void* buffer_out; ma_uint32 nFramesToWrite;
+        void* buffer_out; ma_uint32 nFramesToWrite = pcm_frames_count;
         if (ma_pcm_rb_acquire_write(&((StreamDataSource*)this->stream)->pcm_buffer, &nFramesToWrite, &buffer_out) != MA_SUCCESS) return;
         if (pcm_frames_count < nFramesToWrite) nFramesToWrite = pcm_frames_count;
         memcpy(buffer_out, pcm_frames, nFramesToWrite * ma_get_bytes_per_frame(((StreamDataSource*)this->stream)->format, ((StreamDataSource*)this->stream)->channels));
@@ -135,7 +135,7 @@ GAudio::SoundStream::~SoundStream() { StreamDataSource_uninit((StreamDataSource*
 
 std::vector<float> GAudio::PopMicrophoneData() {
         if (!capturing_mic) return std::vector<float>(0);
-        void* mic_buffer_in; ma_uint32 nFramesToRead;
+        void* mic_buffer_in; ma_uint32 nFramesToRead = RING_BUFFER_SIZE;
         if (ma_pcm_rb_acquire_read(&mic_data_ring_buffer, &nFramesToRead, &mic_buffer_in) != MA_SUCCESS) return std::vector<float>(0);
         std::vector<float> mic_data(nFramesToRead);
         memcpy(mic_data.data(), mic_buffer_in, nFramesToRead * ma_get_bytes_per_frame(ma_format_f32, 1));
