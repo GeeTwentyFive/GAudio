@@ -18,3 +18,8 @@ for (;;) {
         mic_stream.SubmitPCM(mic_data.data(), mic_data.size());
 }
 ```
+
+
+## TODO
+- Fix mic -> SoundStream output stutter
+- Pre-allocate buffer for PopMicrophoneData() output
